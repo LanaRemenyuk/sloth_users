@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "sloth"
+version = "0.1.0"
+description = ""
+authors = ["Lana <lan2828@yandex.ru>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.112.1"
+sqlalchemy = "^2.0.32"
+asyncpg = "^0.29.0"
+python-dotenv = "^1.0.1"
+pydantic = {extras = ["email"], version = "^2.9.2"}
+pydantic-settings = "^2.4.0"
+uvicorn = "^0.30.6"
+bcrypt = "^4.2.0"
+passlib = "^1.7.4"
+phonenumbers = "^8.13.45"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
