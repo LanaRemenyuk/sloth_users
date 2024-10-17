@@ -1,4 +1,5 @@
 import asyncpg
+import redis
 from uuid import UUID
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from app.db.functions import execute_get_all_users, execute_get_user_by_id, execute_delete_user
@@ -11,6 +12,8 @@ from app.schemas.users import UserCreate, UserCreateResponse, UserUpdate, GetAll
 router = APIRouter(
     prefix=f'/api/v1/{settings.service_name}'
 )
+
+redis = redis.from_url(f"redis://{settings.redis_host}:{settings.redis_port}", decode_responses=True)
 
 async def handle_user_creation(conn: asyncpg.Connection, user: UserCreate) -> UserCreateResponse:
     hashed_password = hash_password(user.hashed_pass)
@@ -109,3 +112,37 @@ async def delete_user(user_id: UUID, conn: asyncpg.Connection = Depends(get_db))
         await execute_delete_user(conn, user_id)
     except HTTPException:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+
+@router.post('/verify_code/{user_id}/', status_code=status.HTTP_200_OK)
+async def verify_code(
+    user_id: str, 
+    verification_code: str, 
+    conn: asyncpg.Connection = Depends(get_db)
+) -> dict:
+    """
+    Эндпоинт для верификации 6-значного кода, отправленного на почту.
+    """
+    user = await conn.fetchrow('SELECT email FROM users WHERE id = $1', user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Пользователь не найден"
+        )
+    email = user['email']
+
+    # Получаем код из Redis по ключу email
+    redis_key = f"verification_code:{email}"
+    stored_code = redis.get(redis_key)  # Use synchronous get
+
+    if stored_code == verification_code:
+        await conn.execute('UPDATE users SET is_verified = TRUE WHERE id = $1', user_id)
+
+        redis.delete(redis_key)
+
+        return {"message": "Email успешно подтвержден", "is_verified": True}
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Коды верификации не совпадают "
+        )

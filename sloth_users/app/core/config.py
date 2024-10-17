@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     postgres_db_name: str
     postgres_url: Optional[PostgresDsn] = None
 
+    #настройки redis
+    redis_host: str = 'redis'
+    redis_port: int = 6379
+
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8'
