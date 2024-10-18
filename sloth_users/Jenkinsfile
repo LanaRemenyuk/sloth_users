@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_COMPOSE_FILE = './docker-compose.yml' // путь к вашему docker-compose файлу
+    }
+
+    stages {
+        stage('Prepare Workspace') {
+            steps {
+                script {
+                    def workspaceDir = '.'
+
+                    if (fileExists("${workspaceDir}/.git")) {
+                        echo "Directory is already a Git repository. Performing git pull."
+                        dir(workspaceDir) {
+                            sh 'git reset --hard'
+                            sh 'git clean -fd'
+                            sh 'git pull origin master'
+                        }
+                    } else {
+                        echo "Directory is not a Git repository. Cloning repository."
+                        withCredentials([string(credentialsId: 'a809f27f-2e74-470c-adab-d296c1e76ff2', variable: 'GITHUB_PAT')]) {
+                            sh 'git clone https://${GITHUB_PAT}@github.com:LanaRemenyuk/sloth_users.git .'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build and Deploy') {
+            steps {
+                script {
+                    echo "Building and deploying containers."
+                    sh 'docker compose -f $DOCKER_COMPOSE_FILE pull'
+                    sh 'docker compose -f $DOCKER_COMPOSE_FILE up -d --build'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up Docker."
+            sh 'docker system prune -f'
+        }
+        success {
+            echo 'Deployment was successful!'
+        }
+        failure {
+            echo 'Deployment failed.'
+        }
+    }
+}
