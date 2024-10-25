@@ -143,7 +143,7 @@ BEGIN
 
     IF char_length(_fields) > 0 THEN
         _fields := left(_fields, char_length(_fields) - 2); -- Удаляем последнюю запятую
-        _sql := _sql || _fields || format(' WHERE id = $%s', _param_count); 
+        _sql := _sql || _fields || format(' WHERE id = $%s::uuid', _param_count); 
 
         -- Выполняем обновление пользователя
         EXECUTE _sql USING _username, _email, _phone, _is_verified, _rating, _role, _user_id;
@@ -164,5 +164,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Создаём индексы, если они ещё не существуют
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);

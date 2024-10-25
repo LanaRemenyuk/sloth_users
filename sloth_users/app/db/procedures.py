@@ -2,6 +2,13 @@ import asyncpg
 from typing import Optional
 from uuid import UUID
 
+import logging
+
+# Configure the logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+logger = logging.getLogger(__name__)
+
 async def execute_user_procedure(
     conn: asyncpg.Connection,
     procedure_name: str,
@@ -27,23 +34,37 @@ async def execute_create_user(
         """,
         username, email, hashed_pass, phone, is_verified, rating, role
     )
-
     return user_id
 
 
 async def execute_update_user(conn: asyncpg.Connection, user_id: UUID, **kwargs) -> None:
+    if not isinstance(user_id, UUID):
+        logger.error(f"Invalid user_id: {user_id}. It must be a valid UUID.")
+        raise ValueError("user_id must be a valid UUID")
     params = [
         user_id,                     # UUID пользователя
         kwargs.get('username'),      # Новый username или None
         kwargs.get('email'),         # Новый email или None
         kwargs.get('phone'),         # Новый phone или None
-        kwargs.get('is_verified'),   # Новый is_verified или None
+        kwargs.get('is_verified'),    # Новый is_verified или None
         kwargs.get('rating'),        # Новый rating или None
         kwargs.get('role'),          # Новый role или None
         kwargs.get('hashed_pass')    # Новый hashed_pass или None
     ]
-    await execute_user_procedure(conn, 'update_user_procedure', *params)
-
+    
+    # Log the parameters being passed
+    logger.info(f"Preparing to call 'update_user_procedure' with params: {params}")
+    
+    try:
+        # Call the stored procedure
+        await execute_user_procedure(conn, 'update_user_procedure', *params)
+        
+        # Log successful execution
+        logger.info("Successfully executed 'update_user_procedure'")
+    except Exception as e:
+        # Log any exceptions encountered
+        logger.error(f"Error executing 'update_user_procedure' :{e}")
+        raise  # Re-raise the exception to handle it upstream
 
 async def log_request(conn: asyncpg.Connection, **kwargs) -> None:
     await execute_user_procedure(conn, 'log_request_procedure', *kwargs.values())

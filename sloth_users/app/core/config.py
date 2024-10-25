@@ -31,6 +31,10 @@ class Settings(BaseSettings):
         env_file_encoding='utf-8'
     )
 
+    #настройки сервиса auth
+    auth_service_host: str = 'auth'
+    auth_service_port: int = 8080
+
     @property
     def service_name(
         self,
