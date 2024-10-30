@@ -2,12 +2,12 @@ import asyncpg
 import redis
 import requests
 from uuid import UUID
-from fastapi import APIRouter, Depends, Request, HTTPException, status
+from fastapi import APIRouter, Depends, Request, HTTPException, status, Body
 from app.db.functions import execute_get_all_users, execute_get_user_by_id, execute_delete_user
 from app.db.procedures import execute_create_user, execute_update_user
 from app.db import get_db
 from app.api.utils.pass_utils import hash_password
-from app.api.routes.dependencies import get_current_user
+from app.api.routes.dependencies import get_current_user, validate_and_refresh_token
 from app.core.config import settings
 from app.schemas.users import UserCreate, UserCreateResponse, UserUpdate, GetAllUsersListResponse, GetUserResponse
 import logging
@@ -107,14 +107,17 @@ async def create_user(user: UserCreate, conn: asyncpg.Connection = Depends(get_d
 
 @router.get('/{user_id}', status_code=status.HTTP_200_OK, response_model=GetUserResponse)
 async def get_user(user_id: UUID, conn: asyncpg.Connection = Depends(get_db),
-current_user: UUID = Depends(get_current_user)) -> GetUserResponse:
+current_user: UUID = Depends(get_current_user),
+token_data: dict = Depends(validate_and_refresh_token)
+)  -> GetUserResponse:
     user = await execute_get_user_by_id(conn, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     return GetUserResponse(**user)
 
 @router.patch('/{user_id}', status_code=status.HTTP_200_OK)
-async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db)) -> dict:
+async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db),
+token_data: dict = Depends(validate_and_refresh_token)) -> dict:
     user_data = await request.json()
     try:
         updated_user = await handle_user_update(conn, user_id, user_data)
@@ -124,7 +127,8 @@ async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection 
 
 @router.delete('/{user_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: UUID, conn: asyncpg.Connection = Depends(get_db),
-current_user: UUID = Depends(get_current_user)) -> None:
+current_user: UUID = Depends(get_current_user),
+token_data: dict = Depends(validate_and_refresh_token)) -> None:
     try:
         await execute_delete_user(conn, user_id)
     except HTTPException:
@@ -136,7 +140,8 @@ async def verify_code(
     user_id: UUID, 
     verification_code: str, 
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: UUID = Depends(get_current_user)
+    current_user: UUID = Depends(get_current_user),
+    token_data: dict = Depends(validate_and_refresh_token)
 ) -> dict:
     """
     Эндпоинт для верификации 6-значного кода, отправленного на почту.

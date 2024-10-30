@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     #настройки сервиса auth
     auth_service_host: str = 'auth'
     auth_service_port: int = 8080
+    auth_service_url: str = 'http://auth:8080/api/v1/auth'
 
     @property
     def service_name(

@@ -1,9 +1,9 @@
 import httpx
 from uuid import UUID
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Body
+from typing import Optional
 from app.core.config import settings
 
-AUTH_SERVICE_URL = f"http://auth:8080/api/v1/auth/verify_token"
 
 async def get_current_user(request: Request):
     """Проверка аутентификации через обращение к сервису auth"""
@@ -15,10 +15,9 @@ async def get_current_user(request: Request):
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(AUTH_SERVICE_URL, params={'token': token})
+            response = await client.post(f'{settings.auth_service_url}/verify_token', json={'token': token})
             if response.status_code == 200:
                 token_data = response.json()
-                print(token_data['user_id'])
                 return token_data['user_id']
             else:
                 token_data = response.json()
@@ -26,3 +25,55 @@ async def get_current_user(request: Request):
                 raise HTTPException(status_code=response.status_code, detail='Invalid token')
         except httpx.RequestError:
             raise HTTPException(status_code=500, detail='Auth service is unavailable')
+
+
+from fastapi import HTTPException, Request, status
+import httpx
+from typing import Optional
+
+
+async def validate_and_refresh_token(
+    request: Request
+):
+    authorization_header = request.headers.get("Authorization")
+    if not authorization_header or not authorization_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid access token")
+    
+    access_token = authorization_header.split(" ")[1]
+
+    body = await request.json()
+    refresh_token: Optional[str] = body.get("refresh_token")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f'{settings.auth_service_url}/verify_token', json={"token": access_token})
+
+    if response.status_code == 401:
+        if refresh_token:
+            refresh_response = await client.post(f'{settings.auth_service_url}/refresh_token', json={"refresh_token": refresh_token})
+            if refresh_response.status_code == 200:
+                new_access_token = refresh_response.json().get('access_token')
+                return {
+                    'access_token': new_access_token,
+                    'token_type': 'bearer',
+                    'message': 'Access token refreshed successfully'
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail='Refresh token is invalid or expired'
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail='Access token expired'
+            )
+    elif response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid access token'
+        )
+    
+    return {
+        'message': 'Access token is valid',
+        'token_type': 'bearer'
+    }
