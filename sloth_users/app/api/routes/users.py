@@ -7,7 +7,7 @@ from app.db.functions import execute_get_all_users, execute_get_user_by_id, exec
 from app.db.procedures import execute_create_user, execute_update_user
 from app.db import get_db
 from app.api.utils.pass_utils import hash_password
-from app.api.routes.dependencies import get_current_user, validate_and_refresh_token
+from app.api.routes.dependencies import get_current_user, token_required
 from app.core.config import settings
 from app.schemas.users import UserCreate, UserCreateResponse, UserUpdate, GetAllUsersListResponse, GetUserResponse
 import logging
@@ -106,9 +106,9 @@ async def create_user(user: UserCreate, conn: asyncpg.Connection = Depends(get_d
 
 
 @router.get('/{user_id}', status_code=status.HTTP_200_OK, response_model=GetUserResponse)
+@token_required
 async def get_user(user_id: UUID, conn: asyncpg.Connection = Depends(get_db),
 current_user: UUID = Depends(get_current_user),
-token_data: dict = Depends(validate_and_refresh_token)
 )  -> GetUserResponse:
     user = await execute_get_user_by_id(conn, user_id)
     if not user:
@@ -116,8 +116,8 @@ token_data: dict = Depends(validate_and_refresh_token)
     return GetUserResponse(**user)
 
 @router.patch('/{user_id}', status_code=status.HTTP_200_OK)
-async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db),
-token_data: dict = Depends(validate_and_refresh_token)) -> dict:
+@token_required
+async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db)) -> dict:
     user_data = await request.json()
     try:
         updated_user = await handle_user_update(conn, user_id, user_data)
@@ -126,9 +126,9 @@ token_data: dict = Depends(validate_and_refresh_token)) -> dict:
         raise HTTPException(status_code=500, detail=str(e))  
 
 @router.delete('/{user_id}', status_code=status.HTTP_204_NO_CONTENT)
+@token_required
 async def delete_user(user_id: UUID, conn: asyncpg.Connection = Depends(get_db),
-current_user: UUID = Depends(get_current_user),
-token_data: dict = Depends(validate_and_refresh_token)) -> None:
+current_user: UUID = Depends(get_current_user)) -> None:
     try:
         await execute_delete_user(conn, user_id)
     except HTTPException:
@@ -136,12 +136,12 @@ token_data: dict = Depends(validate_and_refresh_token)) -> None:
 
 
 @router.post('/verify_code/{user_id}/', status_code=status.HTTP_200_OK)
+@token_required
 async def verify_code(
     user_id: UUID, 
     verification_code: str, 
     conn: asyncpg.Connection = Depends(get_db),
-    current_user: UUID = Depends(get_current_user),
-    token_data: dict = Depends(validate_and_refresh_token)
+    current_user: UUID = Depends(get_current_user)
 ) -> dict:
     """
     Эндпоинт для верификации 6-значного кода, отправленного на почту.

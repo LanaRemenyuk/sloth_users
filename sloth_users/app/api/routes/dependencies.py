@@ -1,4 +1,5 @@
 import httpx
+from functools import wraps
 from uuid import UUID
 from fastapi import Depends, HTTPException, Request, Body
 from typing import Optional
@@ -77,3 +78,30 @@ async def validate_and_refresh_token(
         'message': 'Access token is valid',
         'token_type': 'bearer'
     }
+
+
+def token_required(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        request: Request = kwargs.get('request') or args[0]
+        authorization_header = request.headers.get("Authorization")
+        
+        if not authorization_header or not authorization_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing or invalid access token")
+
+        access_token = authorization_header.split(" ")[1]
+
+        body = await request.json()
+        refresh_token = body.get("refresh_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f'{settings.auth_service_url}/validate_and_refresh_token', json={
+                "refresh_token": refresh_token
+            }, headers={"Authorization": f"Bearer {access_token}"})
+
+            if response.status_code == 200:
+                return await func(*args, **kwargs)
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+
+    return wrapper
