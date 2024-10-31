@@ -1,10 +1,72 @@
+import asyncpg
 import httpx
 from functools import wraps
 from uuid import UUID
-from fastapi import Depends, HTTPException, Request, Body
+from fastapi import Depends, HTTPException, Request, Body, status
 from typing import Optional
+from app.api.utils.pass_utils import hash_password
+from app.db.functions import execute_get_user_by_id
+from app.db.procedures import execute_create_user, execute_update_user
 from app.core.config import settings
+from app.schemas.users import UserCreate, UserCreateResponse
 
+
+async def handle_user_creation(conn: asyncpg.Connection, user: UserCreate) -> UserCreateResponse:
+    hashed_password = hash_password(user.hashed_pass)
+    
+    user_id = await execute_create_user(
+        conn=conn,
+        username=user.username,
+        email=user.email,
+        hashed_pass=hashed_password,
+        phone=user.phone,
+        is_verified=user.is_verified,
+        rating=user.rating,
+        role=user.role
+    )
+
+    return UserCreateResponse(
+        id=user_id,
+        username=user.username,
+        email=user.email,
+        phone=user.phone,
+        is_verified=user.is_verified,
+        rating=user.rating,
+        role=user.role
+    )
+
+async def handle_user_update(conn: asyncpg.Connection, user_id: UUID, user_data: dict) -> dict:
+    existing_user = await execute_get_user_by_id(conn, user_id)
+    if not existing_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
+    
+    new_password = user_data.get('hashed_pass')
+    if new_password:
+        hashed_password = hash_password(new_password)
+    else:
+        hashed_password = existing_user['hashed_pass']
+    await execute_update_user(
+        conn=conn,
+        user_id=user_id,
+        username=user_data.get('username', existing_user['username']),
+        email=user_data.get('email', existing_user['email']),
+        hashed_pass=hashed_password,
+        phone=user_data.get('phone', existing_user['phone']),
+        is_verified=user_data.get('is_verified', existing_user['is_verified']),
+        rating=user_data.get('rating', existing_user['rating']),
+        role=user_data.get('role', existing_user['role'])
+    )
+    
+    updated_user = await execute_get_user_by_id(conn, user_id)
+    return {
+        'id': user_id,
+        'username': updated_user['username'],
+        'email': updated_user['email'],
+        'phone': updated_user['phone'],
+        'is_verified': updated_user['is_verified'],
+        'rating': updated_user['rating'],
+        'role': updated_user['role']
+    }
 
 async def get_current_user(request: Request):
     """Проверка аутентификации через обращение к сервису auth"""
@@ -26,12 +88,6 @@ async def get_current_user(request: Request):
                 raise HTTPException(status_code=response.status_code, detail='Invalid token')
         except httpx.RequestError:
             raise HTTPException(status_code=500, detail='Auth service is unavailable')
-
-
-from fastapi import HTTPException, Request, status
-import httpx
-from typing import Optional
-
 
 async def validate_and_refresh_token(
     request: Request
@@ -79,7 +135,6 @@ async def validate_and_refresh_token(
         'token_type': 'bearer'
     }
 
-
 def token_required(func):
     @wraps(func)
     async def wrapper(*args, **kwargs):
@@ -91,13 +146,24 @@ def token_required(func):
 
         access_token = authorization_header.split(" ")[1]
 
-        body = await request.json()
-        refresh_token = body.get("refresh_token")
+        try:
+            body = await request.json()
+            refresh_token = body.get("refresh_token")
+        except Exception:
+            refresh_token = None
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(f'{settings.auth_service_url}/validate_and_refresh_token', json={
-                "refresh_token": refresh_token
-            }, headers={"Authorization": f"Bearer {access_token}"})
+            if refresh_token:
+                response = await client.post(
+                    f'{settings.auth_service_url}/refresh_token',
+                    json={"refresh_token": refresh_token},
+                    headers={"Authorization": f"Bearer {access_token}"}
+                )
+            else:
+                response = await client.post(
+                    f'{settings.auth_service_url}/verify_token',
+                    json={"token": access_token}
+                )
 
             if response.status_code == 200:
                 return await func(*args, **kwargs)
