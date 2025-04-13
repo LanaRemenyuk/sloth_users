@@ -32,8 +32,7 @@ pipeline {
             steps {
                 script {
                     echo "Building and deploying containers."
-                    sh 'docker compose -f $DOCKER_COMPOSE_FILE pull'
-                    sh 'docker compose -f $DOCKER_COMPOSE_FILE up -d --build'
+                    sh 'docker compose up -d --build'
                 }
             }
         }
