@@ -32,7 +32,7 @@ pipeline {
             steps {
                 script {
                     echo "Building and deploying containers."
-                    sh 'docker compose up --build'
+                    sh 'docker-compose up --build'
                 }
             }
         }
