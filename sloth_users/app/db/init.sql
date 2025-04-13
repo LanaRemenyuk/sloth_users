@@ -1,3 +1,12 @@
+DO
+$$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'sloth') THEN
+        CREATE DATABASE sloth;
+    END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT NOT NULL,

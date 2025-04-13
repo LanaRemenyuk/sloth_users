@@ -22,15 +22,39 @@ services:
 
   db:
     image: postgres:15
-    container_name: postgres_db
+    container_name: db
     environment:
       POSTGRES_USER: ${POSTGRES_USERNAME}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB_NAME}
+
+  auth:
+    build: 
+      context: ./sloth_auth
+      dockerfile: Dockerfile 
+    container_name: auth
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  redis:
+    image: 'redis:latest'
+    container_name: redis
+    ports:
+      - "6379:6379"
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - /sloth_users/app/db/init.sql:/docker-entrypoint-initdb.d/init.sql
-
+      - redis_data:/data
+      - /Users/svetlanaremenyuk/Desktop/jenkins_test/sloth/sloth_service/sloth_users/sloth_users/app/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - /Users/svetlanaremenyuk/Desktop/jenkins_test/sloth/sloth_service/sloth_auth/sloth_auth/app/db/init.sql:/docker-entrypoint-initdb.d/init.sql
 volumes:
   postgres_data:
+  redis_data:
 

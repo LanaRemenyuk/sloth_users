@@ -20,7 +20,7 @@ pipeline {
                         }
                     } else {
                         echo "Directory is not a Git repository. Cloning repository."
-                        withCredentials([string(credentialsId: 'a809f27f-2e74-470c-adab-d296c1e76ff2', variable: 'GITHUB_PAT')]) {
+                        withCredentials([string(credentialsId: 'd3d3b031-3603-4057-af0e-be05c34fdde0', variable: 'GITHUB_PAT')]) {
                             sh 'git clone https://${GITHUB_PAT}@github.com:LanaRemenyuk/sloth_users.git .'
                         }
                     }

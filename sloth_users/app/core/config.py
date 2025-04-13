@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     postgres_db_name: str
     postgres_url: Optional[PostgresDsn] = None
 
+
     #настройки redis
     redis_host: str = 'redis'
     redis_port: int = 6379
@@ -35,6 +36,10 @@ class Settings(BaseSettings):
     auth_service_host: str = 'auth'
     auth_service_port: int = 8080
     auth_service_url: str = 'http://auth:8080/api/v1/auth'
+
+    # JWT настройки
+    jwt_secret_key: str
+
 
     @property
     def service_name(

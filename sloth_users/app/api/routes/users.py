@@ -1,4 +1,6 @@
 import asyncpg
+import bcrypt
+import httpx
 import redis
 import requests
 from uuid import UUID
@@ -6,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, status, Body
 from app.db.functions import execute_get_all_users, execute_get_user_by_id, execute_delete_user
 from app.db.procedures import execute_create_user, execute_update_user
 from app.db import get_db
-from app.api.utils.pass_utils import hash_password
+from app.api.utils.pass_utils import hash_password, verify_password_reset_token
 from app.api.routes.dependencies import get_current_user, token_required, handle_user_creation, handle_user_update
 from app.core.config import settings
 from app.schemas.users import UserCreate, UserCreateResponse, UserUpdate, GetAllUsersListResponse, GetUserResponse
@@ -55,8 +57,7 @@ current_user: UUID = Depends(get_current_user),
 
 @router.patch('/{user_id}', status_code=status.HTTP_200_OK)
 @token_required
-async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db),
-current_user: UUID = Depends(get_current_user)) -> dict:
+async def update_user(user_id: UUID, request: Request, conn: asyncpg.Connection = Depends(get_db)) -> dict:
     user_data = await request.json()
     try:
         updated_user = await handle_user_update(conn, user_id, user_data)
@@ -109,3 +110,79 @@ async def verify_code(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Коды верификации не совпадают "
         )
+
+
+@router.post('/reset_password', status_code=status.HTTP_200_OK)
+async def reset_password(
+    email: str = Body(...), 
+    new_password: str = Body(...),
+    conn: asyncpg.Connection = Depends(get_db)
+):
+    """Эндпоинт для установки нового пароля после сброса."""
+    stored_token = redis.get(f"password_reset_token:{email}")
+    
+    if not stored_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    
+    try:
+        user_id = verify_password_reset_token(stored_token)
+    except HTTPException:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    hashed_password = hash_password(new_password)
+    
+    previous_passwords = await conn.fetch(
+        """
+        SELECT hashed_pass, created_at
+        FROM passwords
+        WHERE user_id = $1
+        """,
+        user_id
+    )
+    for record in previous_passwords:
+        old_hashed_password = record['hashed_pass']
+        created_at = record['created_at']
+
+        if bcrypt.checkpw(new_password.encode('utf-8'), old_hashed_password.encode('utf-8')):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Данный пароль уже создавался {created_at.strftime('%Y-%m-%d %H:%M:%S')}. Пожалуйста, введите другой пароль."
+            )
+
+    await conn.execute(
+        """
+        INSERT INTO passwords (user_id, hashed_pass, created_at)
+        VALUES ($1, $2, NOW())
+        """,
+        user_id, hashed_password
+    )
+
+    return {"message": "Пароль успешно изменен"}
+
+@router.post('/request_password_reset', status_code=status.HTTP_200_OK)
+async def request_password_reset(
+    email: str = Body(...), 
+    conn: asyncpg.Connection = Depends(get_db)
+):
+    """
+    Эндпоинт для проверки существования email в users и запроса сброса пароля в auth.
+    """
+    user = await conn.fetchrow("SELECT id FROM users WHERE email = $1", email)
+    
+    if not user:
+        return {"message": "Данный email не зарегистрирован"}
+
+    auth_url = f"{settings.auth_service_url}/send_password_reset_link?email={email}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(auth_url)
+            response.raise_for_status()
+
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Ошибка при обращении к auth сервису: {e.response.text}"
+        )
+    
+    return {"message": "Ссылка на сброс пароля направлена на указанный email"}
