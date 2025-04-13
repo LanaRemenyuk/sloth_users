@@ -16,7 +16,7 @@ pipeline {
                         dir(workspaceDir) {
                             sh 'git reset --hard'
                             sh 'git clean -fd'
-                            sh 'git pull origin master'
+                            sh 'git pull origin main'
                         }
                     } else {
                         echo "Directory is not a Git repository. Cloning repository."
